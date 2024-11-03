@@ -1,4 +1,4 @@
-import json
+import json #might need to make it others as well like sig
 import requests
 from datetime import datetime
 from collections import defaultdict
@@ -9,7 +9,7 @@ class CTLogs:
     
     # Fetch list of available CT logs
     def fetch_log_list(self):
-        url = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json" #This is for google only, might need to expand it to other logs
+        url = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json" #onyl looking at google's
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()
