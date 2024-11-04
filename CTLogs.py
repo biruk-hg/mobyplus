@@ -1,99 +1,58 @@
-import json #might need to make it others as well like sig
-import requests
-from datetime import datetime
-from collections import defaultdict
+# Pseudocode for extracting data from CT Logs
 
-class CTLogs:
-    def __init__(self):
-        self.cert_data = defaultdict(list)
-    
+# Import necessary libraries (json, requests for HTTP requests, datetime for date handling, defaultdict for organizing data)
+
+Class CTLogs:
+    # Initialize the class
+    Function __init__:
+        - Initialize cert_data as a defaultdict that maps each domain to a list of its certificates
+
     # Fetch list of available CT logs
-    def fetch_log_list(self):
-        url = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json" #onyl looking at google's
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Error fetching log list: {response.status_code}")
-            return None
+    Function fetch_log_list:
+        - Define the URL to the CT log list JSON file
+        - Send a GET request to the URL
+        - If the response is successful (status code 200):
+            - Return the JSON content containing a list of CT logs
+        - Else:
+            - Print an error message with the response status code
+            - Return None
 
     # Fetch CT log entries from a specific log URL
-    def fetch_ct_log_entries(self, log_url, start=0, end=10):
-        url = f"{log_url}ct/v1/get-entries"
-        params = {'start': start, 'end': end}
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            return response.json().get('entries', [])
-        else:
-            print(f"Error fetching entries from {log_url}: {response.status_code}")
-            return []
+    Function fetch_ct_log_entries(log_url, start=0, end=10):
+        - Construct the URL by appending "ct/v1/get-entries" to log_url
+        - Define parameters (start and end) to specify the range of entries
+        - Send a GET request to the URL with parameters
+        - If the response is successful (status code 200):
+            - Extract and return the entries list from the JSON response
+        - Else:
+            - Print an error message with the response status code
+            - Return an empty list
 
     # Parse and structure certificate data
-    def parse_certificates(self, certificates):
-        for cert in certificates:
-            domain = cert.get('domain', 'Unknown')
-            cert_type = cert.get('type', 'Unknown')
-            ca_issuer = cert.get('issuer', 'Unknown')
-            issued_date = cert.get('issued_date')
-            expiration_date = cert.get('expiration_date')
-            
-            issued_date = datetime.strptime(issued_date, "%Y-%m-%dT%H:%M:%SZ") if issued_date else None
-            expiration_date = datetime.strptime(expiration_date, "%Y-%m-%dT%H:%M:%SZ") if expiration_date else None
-            
-            self.cert_data[domain].append({
-                'type': cert_type,
-                'issuer': ca_issuer,
-                'issued_date': issued_date,
-                'expiration_date': expiration_date
-            })
+    Function parse_certificates(certificates):
+        - For each certificate in the certificates list:
+            - Extract the domain, type (EV or DV), issuer, issued_date, and expiration_date
+            - Convert issued_date and expiration_date to datetime objects if they exist; otherwise, leave them as None
+            - Append a dictionary of these details to cert_data under the domain key
 
     # Analyze patterns in certificate data to support conjectures
-    def analyze_patterns(self):
-        results = {
-            'frequent_ca_changes': [],
-            'suspicious_ev_downgrades': [],
-            'rapid_cert_reissuance': [],
-            'ev_cert_usage': [],
-            'dv_cert_reissuance': []
-        }
+    Function analyze_patterns:
+        - Initialize an empty results dictionary with keys for each type of pattern to detect:
+            - "frequent_ca_changes", "suspicious_ev_downgrades", "rapid_cert_reissuance", "ev_cert_usage", and "dv_cert_reissuance"
         
-        for domain, certs in self.cert_data.items():
-            ca_changes = 0
-            last_ca = None
-            ev_downgrades = 0
-            cert_reissues = 0
-            dv_reissues = 0
-            ev_count = 0
-            cert_timeline = sorted(certs, key=lambda x: (x['issued_date'] is not None, x['issued_date']))
+        - For each domain in cert_data:
+            - Initialize counters for CA changes, EV downgrades, reissuance, and counts of EV/DV certificates
+            - Sort the certificates for the domain by issued_date, placing entries with None dates at the end
+            
+            - For each certificate in the sorted certificates list:
+                - If the current certificate's issuer differs from the last one, increment the CA change counter
+                - Track EV and DV certificates, counting EV and DV reissuances
+                - Check for downgrades (any DV certificate following an EV certificate)
+                - If both issued_date and expiration_date are defined:
+                    - Calculate the duration between issuance and expiration
+                    - If duration is less than 30 days, increment the rapid reissuance counter
+            
+            - After iterating through certificates:
+                - Add the domain to results lists based on defined thresholds for CA changes, downgrades, reissuances, etc.
 
-            for cert in cert_timeline:
-                if last_ca and cert['issuer'] != last_ca:
-                    ca_changes += 1
-                last_ca = cert['issuer']
-                
-                if cert['type'] == 'EV':
-                    ev_count += 1
-                elif cert['type'] == 'DV':
-                    dv_reissues += 1
-                
-                if cert['type'] == 'DV' and any(c['type'] == 'EV' for c in certs):
-                    ev_downgrades += 1
-                
-                if cert['issued_date'] and cert['expiration_date']:
-                    duration = (cert['expiration_date'] - cert['issued_date']).days
-                    if duration < 30:
-                        cert_reissues += 1
-
-            if ca_changes > 2:
-                results['frequent_ca_changes'].append(domain)
-            if ev_downgrades > 0:
-                results['suspicious_ev_downgrades'].append(domain)
-            if cert_reissues > 1:
-                results['rapid_cert_reissuance'].append(domain)
-            if ev_count > 0:
-                results['ev_cert_usage'].append(domain)
-            if dv_reissues > 1:
-                results['dv_cert_reissuance'].append(domain)
-        
-        return results
-    
+        - Return the results dictionary with the list of flagged domains for each pattern
